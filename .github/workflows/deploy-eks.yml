@@ -68,5 +68,3 @@ jobs:
           kubectl apply -f k8s/backend-service.yaml
           kubectl apply -f k8s/frontend-deployment.yaml
           kubectl apply -f k8s/frontend-service.yaml
-          kubectl rollout status deployment/tienda-backend -n ${{ env.EKS_NAMESPACE }} --timeout=5m
-          kubectl rollout status deployment/tienda-frontend -n ${{ env.EKS_NAMESPACE }} --timeout=5m
