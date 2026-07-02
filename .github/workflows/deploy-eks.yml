@@ -1,0 +1,72 @@
+name: CI/CD Tienda Perritos EKS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  EKS_CLUSTER_NAME: nombre-eks
+  EKS_NAMESPACE: tienda
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login a Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build y Push FRONTEND
+        run: |
+          docker build -t tienda-frontend ./frontend
+          docker tag tienda-frontend:latest 740318032638.dkr.ecr.us-east-1.amazonaws.com/tienda-frontend:eks-v1
+          docker push 740318032638.dkr.ecr.us-east-1.amazonaws.com/tienda-frontend:eks-v1
+
+      - name: Build y Push BACKEND
+        run: |
+          docker build -t tienda-backend ./backend
+          docker tag tienda-backend:latest 740318032638.dkr.ecr.us-east-1.amazonaws.com/tienda-backend:eks-v1
+          docker push 740318032638.dkr.ecr.us-east-1.amazonaws.com/tienda-backend:eks-v1
+
+      - name: Build y Push DB
+        run: |
+          docker build -t tienda-db ./db
+          docker tag tienda-db:latest 740318032638.dkr.ecr.us-east-1.amazonaws.com/tienda-db:eks-v2
+          docker push 740318032638.dkr.ecr.us-east-1.amazonaws.com/tienda-db:eks-v2
+
+      - name: Instalar kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Conectar a EKS
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+      - name: Desplegar en EKS
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/mysql-secret.yaml
+          kubectl apply -f k8s/mysql-deployment.yaml
+          kubectl apply -f k8s/mysql-service.yaml
+          kubectl apply -f k8s/backend-deployment.yaml
+          kubectl apply -f k8s/backend-service.yaml
+          kubectl apply -f k8s/frontend-deployment.yaml
+          kubectl apply -f k8s/frontend-service.yaml
+          kubectl rollout status deployment/tienda-backend -n ${{ env.EKS_NAMESPACE }}
+          kubectl rollout status deployment/tienda-frontend -n ${{ env.EKS_NAMESPACE }}
